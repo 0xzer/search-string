@@ -102,12 +102,12 @@ vector<filesystem::path> listFiles(const filesystem::path& path) {
     return fileList;
 }
 
-bool readFile(const filesystem::path& filePath, const std::string& target, string& log) {
+std::string readFile(const filesystem::path& filePath, const std::string& target) {
     std::ifstream inputFile(filePath);
 
     if (!inputFile) {
         std::cerr << "Failed to open the file: " << filePath << '\n';
-        return false;
+        return "";
     }
 
     std::ostringstream oss;
@@ -132,49 +132,58 @@ bool readFile(const filesystem::path& filePath, const std::string& target, strin
         lineNumber++;
     }
 
-    log = oss.str();
-    return foundMatch;
+    return oss.str();
 }
 
 int main(int argc, char* args[]) {
-    string path;
-    string search;
+    std::string path;
+    std::string search;
     int matchCount = 0;
-    string log;
+    std::string log;
+    std::string arg;
 
     for (int i = 1; i < argc; ++i) {
-        std::string arg = args[i];
+        arg = args[i];
 
         if (arg == "-p" && i + 1 < argc) {
-            path = args[i + 1];
-            ++i;
-        } else if (arg == "-s" && i + 1 < argc) {
-            search = args[i + 1];
-            ++i;
+            path = args[++i];
+        }
+        else if (arg == "-s") {
+            int sIndex = i + 1;
+            for(; sIndex < argc; ++sIndex) {
+                search += args[sIndex];
+                if (sIndex + 1 != argc) {
+                    search += " ";
+                }
+            }
+            break;
         }
     }
 
     if (search.empty()) {
-        std::cout << "[" + RED_COLOR + "-" + RESET_COLOR + "] Invalid Usage: search-string [-p] path/to/dir -s string_to_search_for\n";
+        std::cout << "[" + RED_COLOR + "-" + RESET_COLOR + "] Invalid Usage: search-string [-p] path/to/dir -s string to search for\n";
         return 0;
-    };
+    }
 
     if (path.empty()) {
         path = std::filesystem::current_path();
     }
 
     auto start = high_resolution_clock::now();
-
     auto files = listFiles(path);
 
     ThreadPool pool(thread::hardware_concurrency());
-    vector<future<bool>> futures;
+    vector<future<std::string>> futures;
     for (const auto& file : files) {
-        futures.emplace_back(pool.enqueue(readFile, file, cref(search), ref(log)));
+        futures.emplace_back(pool.enqueue(readFile, file, cref(search)));
     }
 
     for (auto &f : futures) {
-        if (f.get()) matchCount++;
+        string result = f.get();
+        if (!result.empty()) {
+            log += result;
+            matchCount++;
+        }
     }
 
     auto end = high_resolution_clock::now();
